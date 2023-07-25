@@ -1,11 +1,14 @@
 class AwsRotateIamKeys < Formula
-  desc "Automatically set up a cron job to rotate your IAM keys"
+  desc "Automatically rotate your IAM keys daily"
   homepage "https://aws-rotate-iam-keys.com"
-  url "https://github.com/rhyeal/aws-rotate-iam-keys/archive/v0.9.2.tar.gz"
-  sha256 "9101bff2a889e5c883fda99b12588dd50bee9d42faf77f6d6e5d94ab35abb9e1"
-  depends_on "awscli"
+  url "https://github.com/rhyeal/aws-rotate-iam-keys.git", tag: "v0.9.8.5"
   depends_on "gnu-getopt"
   depends_on "jq"
+  depends_on "awscli" => :recommended
+
+  head do
+    url "https://github.com/rhyeal/aws-rotate-iam-keys.git"
+  end
 
   def install
     bin.install "src/bin/aws-rotate-iam-keys"
@@ -16,7 +19,7 @@ class AwsRotateIamKeys < Formula
   end
 
   def caveats
-    s = <<~EOS
+    <<~EOS
       We've installed a default/global configuration file to:
           #{etc}/aws-rotate-iam-keys
 
@@ -39,42 +42,14 @@ class AwsRotateIamKeys < Formula
     EOS
   end
 
-  plist_options :startup => false
-
-  def plist; <<~EOS
-    <?xml version="1.0" encoding="UTF-8"?>
-    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-    <plist version="1.0">
-    <dict>
-      <key>EnvironmentVariables</key>
-      <dict>
-        <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-      </dict>
-      <key>Label</key>
-      <string>#{plist_name}</string>
-      <key>ProgramArguments</key>
-      <array>
-        <string>/bin/bash</string>
-        <string>-c</string>
-        <string>if ! curl -s www.google.com > /dev/null; then sleep 60; fi; cp /dev/null /tmp/#{plist_name}.log ; ( cat ~/.aws-rotate-iam-keys 2>/dev/null || cat #{etc}/aws-rotate-iam-keys ) | while read line; do aws-rotate-iam-keys $line; done</string>
-      </array>
-      <key>StandardOutPath</key>
-      <string>/tmp/#{plist_name}.log</string>
-      <key>StandardErrorPath</key>
-      <string>/tmp/#{plist_name}.log</string>
-      <key>RunAtLoad</key>
-      <true/>
-      <key>StartCalendarInterval</key>
-      <dict>
-        <key>Hour</key>
-        <integer>3</integer>
-        <key>Minute</key>
-        <integer>23</integer>
-      </dict>
-    </dict>
-    </plist>
-  EOS
+  service do
+    run ["bash", "-c", "if ! curl -s www.google.com; then sleep 60; fi; cp /dev/null /tmp/#{plist_name}.log; ( grep -E ^[[:space:]]*- ~/.aws-rotate-iam-keys || cat #{etc}/aws-rotate-iam-keys ) | while read line; do #{opt_bin}/aws-rotate-iam-keys $line; done"]
+    run_type :cron
+    run_at_load true
+    cron "23 3 * * *"
+    environment_variables PATH: std_service_path_env
+    log_path "/tmp/#{plist_name}.log"
+    error_log_path "/tmp/#{plist_name}.log"
   end
 
   test do
